@@ -1,0 +1,37 @@
+name: Substack -> Telegram
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # a cada 5 min (mínimo do GitHub)
+  workflow_dispatch:         # permite rodar manualmente
+
+permissions:
+  contents: write
+
+concurrency:
+  group: substack-telegram
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verificar feed e publicar
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python substack_to_telegram.py
+
+      - name: Salvar estado
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "Atualiza posts enviados"
+          git push
