@@ -27,11 +27,16 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_SEEN = 200  # quantos GUIDs guardar
 
 
-def fetch_feed():
-    req = urllib.request.Request(
-        FEED_URL,
-        headers={"User-Agent": "Mozilla/5.0 (substack-telegram-bot)"},
-    )
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+}
+
+
+def fetch_direct():
+    req = urllib.request.Request(FEED_URL, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=30) as r:
         root = ET.fromstring(r.read())
     items = []
@@ -41,7 +46,35 @@ def fetch_feed():
         guid = (it.findtext("guid") or link).strip()
         desc = (it.findtext("description") or "").strip()
         items.append({"title": title, "link": link, "guid": guid, "desc": desc})
-    return items  # mais recente primeiro
+    return items
+
+
+def fetch_via_rss2json():
+    # Alternativa quando o Substack bloqueia os servidores do GitHub (403)
+    url = "https://api.rss2json.com/v1/api.json?rss_url=" + urllib.parse.quote(FEED_URL, safe="")
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = json.loads(r.read())
+    if data.get("status") != "ok":
+        raise RuntimeError(f"rss2json falhou: {data.get('message')}")
+    items = []
+    for it in data.get("items", []):
+        link = (it.get("link") or "").strip()
+        items.append({
+            "title": (it.get("title") or "").strip(),
+            "link": link,
+            "guid": (it.get("guid") or link).strip(),
+            "desc": (it.get("description") or "").strip() if len(it.get("description") or "") < 400 else "",
+        })
+    return items
+
+
+def fetch_feed():
+    try:
+        return fetch_direct()
+    except Exception as e:
+        print(f"Acesso direto ao feed falhou ({e}); usando rss2json.")
+        return fetch_via_rss2json()  # mais recente primeiro
 
 
 def load_state():
